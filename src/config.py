@@ -15,8 +15,9 @@ class ScanConfig:
 
 @dataclass
 class SignalConfig:
-    stock_jump_min: float = 0.25
+    stock_jump_min: float = 1.0
     dji_jump_min_bps: float = 19.0
+    premarket_minutes: int = 15
 
 
 @dataclass

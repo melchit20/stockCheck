@@ -6,8 +6,8 @@ from pathlib import Path
 import pandas as pd
 
 from .config import AppConfig
-from .fetcher import AlpacaFetcher
-from .signals import detect_signals
+from .polygon_fetcher import PolygonFetcher
+from .signals import detect_premarket_signals
 from .universe import get_stock_universe
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class Scanner:
     def __init__(self, config: AppConfig):
         self.config = config
-        self.fetcher = AlpacaFetcher(config)
+        self.fetcher = PolygonFetcher(config)
 
     def run(self) -> pd.DataFrame:
         symbols = self.config.stock_symbols or get_stock_universe(
@@ -24,18 +24,19 @@ class Scanner:
         )
         logger.info(
             f"Scanning {len(symbols)} stocks over "
-            f"{self.config.scan.lookback_days} trading days"
+            f"{self.config.scan.lookback_days} trading days "
+            f"(pre-market strategy)"
         )
 
         dji_sym = self.config.dji_proxy_symbol
-        logger.info(f"Fetching DJI proxy ({dji_sym}) data...")
-        dji_bars = self.fetcher.fetch_morning_bars([dji_sym])
+        logger.info(f"Fetching DJI proxy ({dji_sym}) pre-market bars...")
+        dji_bars = self.fetcher.fetch_premarket_bars([dji_sym])
         if dji_bars.empty:
             logger.error("No DJI proxy data returned — cannot continue")
             return pd.DataFrame()
 
-        logger.info(f"Fetching data for {len(symbols)} stocks...")
-        all_bars = self.fetcher.fetch_morning_bars(symbols)
+        logger.info(f"Fetching pre-market bars for {len(symbols)} stocks...")
+        all_bars = self.fetcher.fetch_premarket_bars(symbols)
         if all_bars.empty:
             logger.error("No stock data returned")
             return pd.DataFrame()
@@ -48,12 +49,14 @@ class Scanner:
             if stock_bars.empty:
                 continue
 
-            sigs = detect_signals(stock_bars, dji_only, self.config.signals)
+            sigs = detect_premarket_signals(
+                stock_bars, dji_only, self.config.signals
+            )
             if not sigs.empty:
                 sigs.insert(0, "symbol", symbol)
                 all_signals.append(sigs)
 
-            if idx % 20 == 0 or idx == len(symbols):
+            if idx % 50 == 0 or idx == len(symbols):
                 logger.info(f"  Processed {idx}/{len(symbols)} stocks")
 
         if not all_signals:
@@ -121,7 +124,7 @@ class Scanner:
         stocks_with_buys = (results["buy_signal_count"] > 0).sum()
 
         print("\n" + "=" * 60)
-        print("SCAN SUMMARY")
+        print("SCAN SUMMARY  (pre-market strategy)")
         print("=" * 60)
         print(f"Total signals detected:  {total_signals}")
         print(f"Buy signals:             {buy_signals}")
