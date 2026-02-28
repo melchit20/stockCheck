@@ -8,6 +8,7 @@ from typing import List
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+from alpaca.data.enums import DataFeed
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
@@ -95,11 +96,13 @@ class AlpacaFetcher:
 
             self._rate_limit()
             try:
+                feed = DataFeed.IEX if self.config.alpaca.feed == "iex" else DataFeed.SIP
                 request = StockBarsRequest(
                     symbol_or_symbols=batch,
                     timeframe=TimeFrame.Minute,
                     start=start,
                     end=end,
+                    feed=feed,
                 )
                 bars = self.client.get_stock_bars(request)
                 df = bars.df
