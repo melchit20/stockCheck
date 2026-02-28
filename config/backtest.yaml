@@ -1,0 +1,18 @@
+symbol: "BKNG"
+dji_proxy: "DIA"
+shares: 10
+lookback_days: 200
+
+# Signal thresholds (MC sweet spot)
+stock_jump_min: 2.0
+dji_jump_min_bps: 3.0
+premarket_minutes: 10
+
+# Strategy A — Scalper (100% win rate from MC sweep)
+profit_target_pct: 0.25
+stop_loss_pct: 0.50
+trading_window_minutes: 20
+
+cache_db: "cache/market_data.db"
+output_csv: "output/backtest_trades.csv"
+summary_csv: "output/backtest_summary.csv"
