@@ -4,11 +4,13 @@ scan:
   morning_minutes: 20
 
 signals:
-  # Dip: a minute where close <= open (flat or negative candle)
-  # Stock jump: next minute's close rises by at least this many dollars
-  stock_jump_min: 0.25
-  # DJI jump: DJI rises by at least this many basis points during the dip minute
+  # Dip: stock net flat/down over 5 min pre-market window (9:25-9:29 ET)
+  # Stock jump: 9:30 bar close rises by at least this many dollars vs pre-market close
+  stock_jump_min: 1.00
+  # DJI jump: DIA net change ≥ this many bps over the pre-market window
   dji_jump_min_bps: 19.0
+  # Pre-market window: minutes before market open to check for dip/DJI jump
+  premarket_minutes: 15
 
 alpaca:
   feed: "iex"

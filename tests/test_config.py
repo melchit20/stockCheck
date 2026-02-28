@@ -12,14 +12,15 @@ class TestAppConfig:
         assert config.scan.num_stocks == 100
         assert config.scan.lookback_days == 30
         assert config.scan.morning_minutes == 20
-        assert config.signals.stock_jump_min == 0.25
+        assert config.signals.stock_jump_min == 1.0
         assert config.signals.dji_jump_min_bps == 19.0
+        assert config.signals.premarket_minutes == 15
         assert config.dji_proxy_symbol == "DIA"
 
     def test_from_yaml(self):
         config = AppConfig.from_yaml("config/default.yaml")
         assert config.scan.num_stocks == 500
-        assert config.signals.stock_jump_min == 0.25
+        assert config.signals.stock_jump_min == 1.0
 
     def test_custom_yaml(self, tmp_path):
         yaml_content = """

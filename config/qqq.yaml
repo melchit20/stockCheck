@@ -1,0 +1,22 @@
+scan:
+  num_stocks: 500
+  lookback_days: 30
+  morning_minutes: 20
+
+signals:
+  stock_jump_min: 0.25
+  dji_jump_min_bps: 19.0
+
+alpaca:
+  feed: "iex"
+  max_requests_per_min: 200
+
+output:
+  results_csv: "output/buy_signals_qqq.csv"
+  signals_csv: "output/signals_detail_qqq.csv"
+
+cache:
+  db_path: "cache/market_data.db"
+
+dji_proxy:
+  symbol: "QQQ"

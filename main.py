@@ -50,6 +50,12 @@ def main():
         help="Override: min DJI jump in basis points",
     )
     parser.add_argument(
+        "--pm-minutes",
+        type=int,
+        default=None,
+        help="Override: pre-market window in minutes before open",
+    )
+    parser.add_argument(
         "--clear-cache",
         action="store_true",
         help="Clear the SQLite cache before running",
@@ -81,10 +87,14 @@ def main():
         config.signals.stock_jump_min = args.stock_jump
     if args.dji_jump_bps is not None:
         config.signals.dji_jump_min_bps = args.dji_jump_bps
+    if args.pm_minutes is not None:
+        config.signals.premarket_minutes = args.pm_minutes
 
     if args.clear_cache:
         from src.cache import DataCache
+        from src.polygon_fetcher import PolygonCache
         DataCache(config.cache.db_path).clear()
+        PolygonCache(config.cache.db_path).clear()
 
     try:
         scanner = Scanner(config)
