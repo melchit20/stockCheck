@@ -40,19 +40,24 @@ def main():
     host = args.host or config["dashboard"].get("host", "0.0.0.0")
     port = args.port or config["dashboard"].get("port", 5000)
 
-    if not args.no_scheduler:
-        api_key = os.environ.get("POLYGON_API_KEY", "")
-        if not api_key:
-            logging.warning("POLYGON_API_KEY not set — scheduler will not start. "
-                            "Dashboard-only mode.")
+    api_key = os.environ.get("POLYGON_API_KEY", "")
+    if not api_key:
+        logging.warning(
+            "POLYGON_API_KEY not set — bot scheduler unavailable. "
+            "Set the env var and restart to enable live trading."
+        )
+    else:
+        db = PaperTradingDB(config.get("database", {}).get("path", "data/paper_trading.db"))
+        data = PolygonLiveData(api_key)
+        bot = TradingBot(db, data, config["trading"])
+        sched = BotScheduler(bot)
+        start_paused = args.no_scheduler
+        sched.start(paused=start_paused)
+        dashboard_module.scheduler_ref = sched
+        if start_paused:
+            logging.info("Scheduler ready but paused — start it from the dashboard.")
         else:
-            db = PaperTradingDB(config.get("database", {}).get("path", "data/paper_trading.db"))
-            data = PolygonLiveData(api_key)
-            bot = TradingBot(db, data, config["trading"])
-            sched = BotScheduler(bot)
-            sched.start()
-            dashboard_module.scheduler_ref = sched
-            logging.info("Bot scheduler started.")
+            logging.info("Scheduler running — bot will trade automatically.")
 
     logging.info(f"Dashboard at http://{host}:{port}")
     app.run(host=host, port=port, debug=False, use_reloader=False)

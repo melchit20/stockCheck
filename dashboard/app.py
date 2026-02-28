@@ -214,5 +214,30 @@ def _register_routes(app: Flask):
     @app.route("/api/scheduler/status")
     @_login_required
     def api_scheduler_status():
-        running = scheduler_ref.running if scheduler_ref else False
-        return jsonify({"running": running})
+        if not scheduler_ref:
+            return jsonify({"running": False, "ready": False, "paused": True})
+        return jsonify({
+            "running": scheduler_ref.running,
+            "ready": scheduler_ref.ready,
+            "paused": scheduler_ref.paused,
+        })
+
+    @app.route("/api/scheduler/start", methods=["POST"])
+    @_login_required
+    def api_scheduler_start():
+        if not scheduler_ref:
+            return jsonify({"error": "Scheduler not configured. Set POLYGON_API_KEY and restart."}), 400
+        if not scheduler_ref.ready:
+            return jsonify({"error": "Scheduler thread not running. Restart the application."}), 500
+        scheduler_ref.resume()
+        logger.info("Scheduler started via dashboard")
+        return jsonify({"ok": True, "running": True})
+
+    @app.route("/api/scheduler/stop", methods=["POST"])
+    @_login_required
+    def api_scheduler_stop():
+        if not scheduler_ref:
+            return jsonify({"error": "Scheduler not configured"}), 400
+        scheduler_ref.pause()
+        logger.info("Scheduler stopped via dashboard")
+        return jsonify({"ok": True, "running": False})

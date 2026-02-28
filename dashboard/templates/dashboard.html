@@ -7,7 +7,10 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-14">
       <div class="flex items-center gap-3">
         <span class="text-lg font-bold tracking-tight">📈 Paper Trading</span>
-        <span id="sched-badge" class="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">scheduler: —</span>
+        <button id="sched-toggle" onclick="toggleScheduler()" class="flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-gray-700 text-gray-400 hover:bg-gray-600 transition cursor-pointer">
+          <span id="sched-dot" class="w-2 h-2 rounded-full bg-gray-500"></span>
+          <span id="sched-label">scheduler: —</span>
+        </button>
       </div>
       <div class="flex items-center gap-4 text-sm">
         <span class="text-gray-400">{{ user.name }}</span>
@@ -311,18 +314,44 @@ async function loadTrades(){
   `).join('');
 }
 
-// ── scheduler badge ──────────────────────────────────────────────────
+// ── scheduler toggle ─────────────────────────────────────────────────
+let _schedState = {running:false, ready:false};
+
 async function loadSchedulerStatus(){
   const d = await api('/api/scheduler/status');
   if(!d) return;
-  const el = $('#sched-badge');
-  if(d.running){
-    el.textContent = 'scheduler: running';
-    el.className = 'text-xs px-2 py-0.5 rounded-full bg-emerald-700 text-emerald-200';
+  _schedState = d;
+  const btn = $('#sched-toggle');
+  const dot = $('#sched-dot');
+  const label = $('#sched-label');
+
+  if(!d.ready){
+    dot.className = 'w-2 h-2 rounded-full bg-gray-500';
+    label.textContent = 'bot: not configured';
+    btn.className = 'flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-gray-700 text-gray-500 cursor-not-allowed';
+  } else if(d.running){
+    dot.className = 'w-2 h-2 rounded-full bg-emerald-400 pulse';
+    label.textContent = 'bot: running — click to stop';
+    btn.className = 'flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-emerald-900/60 text-emerald-300 hover:bg-emerald-800/60 transition cursor-pointer';
   } else {
-    el.textContent = 'scheduler: stopped';
-    el.className = 'text-xs px-2 py-0.5 rounded-full bg-red-700 text-red-200';
+    dot.className = 'w-2 h-2 rounded-full bg-red-400';
+    label.textContent = 'bot: stopped — click to start';
+    btn.className = 'flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-red-900/60 text-red-300 hover:bg-red-800/60 transition cursor-pointer';
   }
+}
+
+async function toggleScheduler(){
+  if(!_schedState.ready){
+    alert('Bot scheduler is not configured.\n\nSet POLYGON_API_KEY and restart the application.');
+    return;
+  }
+  const action = _schedState.running ? 'stop' : 'start';
+  const msg = _schedState.running
+    ? 'Stop the trading bot? It will not trade until you start it again.'
+    : 'Start the trading bot? It will begin scanning for signals on the next trading day.';
+  if(!confirm(msg)) return;
+  await fetch(`/api/scheduler/${action}`, {method:'POST'});
+  await loadSchedulerStatus();
 }
 
 // ── init & polling ───────────────────────────────────────────────────

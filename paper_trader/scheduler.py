@@ -13,10 +13,18 @@ class BotScheduler:
     def __init__(self, bot: TradingBot):
         self.bot = bot
         self.scheduler = BackgroundScheduler(timezone="America/New_York")
+        self._paused = True  # start paused; dashboard or CLI can resume
 
-    def start(self):
+    def _guarded_tick(self):
+        if self._paused:
+            return
+        self.bot.tick()
+
+    def start(self, paused: bool = True):
+        """Start the APScheduler background thread. Jobs only fire when not paused."""
+        self._paused = paused
         self.scheduler.add_job(
-            self.bot.tick,
+            self._guarded_tick,
             CronTrigger(
                 day_of_week="mon-fri",
                 hour="9",
@@ -29,7 +37,7 @@ class BotScheduler:
             misfire_grace_time=30,
         )
         self.scheduler.add_job(
-            self.bot.tick,
+            self._guarded_tick,
             CronTrigger(
                 day_of_week="mon-fri",
                 hour="16",
@@ -42,12 +50,30 @@ class BotScheduler:
             misfire_grace_time=300,
         )
         self.scheduler.start()
-        logger.info("Scheduler started — trading tick every minute 9:00-9:50 ET, Mon-Fri")
+        state = "paused" if paused else "running"
+        logger.info(f"Scheduler started ({state}) — trading tick every minute 9:00-9:50 ET, Mon-Fri")
 
     def stop(self):
         self.scheduler.shutdown(wait=False)
-        logger.info("Scheduler stopped")
+        logger.info("Scheduler shut down")
+
+    def resume(self):
+        self._paused = False
+        logger.info("Scheduler resumed — bot will trade on next tick")
+
+    def pause(self):
+        self._paused = True
+        logger.info("Scheduler paused — bot will not trade until resumed")
 
     @property
     def running(self) -> bool:
+        return self.scheduler.running and not self._paused
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
+    @property
+    def ready(self) -> bool:
+        """True if APScheduler is alive (even if paused)."""
         return self.scheduler.running
