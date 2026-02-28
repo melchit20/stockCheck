@@ -189,7 +189,7 @@ def _simulate_trade(
 
 def main():
     parser = argparse.ArgumentParser(description="Optimized MC options sweep")
-    parser.add_argument("--symbols", nargs="+", default=["TSLA", "META", "APP", "AMD"])
+    parser.add_argument("--symbols", nargs="+", default=["TSLA", "APP", "AMD"])
     parser.add_argument("--dji-proxy", default="DIA")
     parser.add_argument("--days", type=int, default=200)
     parser.add_argument("--contracts", type=int, default=1)
@@ -349,27 +349,15 @@ def main():
     sweet = df[(df["total_win_rate"] >= 55) & (df["total_roi"] >= 10)]
     print(sweet.sort_values("total_roi", ascending=False).head(20)[cols + sym_cols].to_string(index=False))
 
-    # --- Keep or drop META? ---
     print("\n\n" + "=" * 100)
-    print("VERDICT: KEEP OR DROP EACH STOCK?")
+    print("PER-STOCK ANALYSIS")
     print("=" * 100)
     for sym in args.symbols:
         avg_roi = df[f"{sym}_roi"].mean()
         avg_wr = df[f"{sym}_wr"].mean()
         best_roi = df[f"{sym}_roi"].max()
         pct_prof = (df[f"{sym}_roi"] > 0).sum() / len(df) * 100
-        total_pnl_all = df[f"{sym}_pnl"].sum() / len(df)  # avg across combos
         print(f"  {sym:>4}: avg ROI={avg_roi:>+6.1f}%  avg WR={avg_wr:>5.1f}%  best ROI={best_roi:>+6.1f}%  profitable in {pct_prof:.0f}% of combos")
-
-    # Compare portfolio with and without META
-    print("\n  Portfolio ROI comparison (top 10 combos):")
-    for _, row in df.sort_values("total_roi", ascending=False).head(10).iterrows():
-        others = [s for s in args.symbols if s != "META"]
-        no_meta_pnl = sum(row[f"{s}_pnl"] for s in others)
-        no_meta_cost = row["total_cost"]  # approximate
-        print(f"    otm={row['strike_otm']:>2}% exp={row['expiry']:>2}d tp={row['profit_pct']:>3}% sl={row['stop_pct']:>3}%: "
-              f"with META ${row['total_pnl']:>+8,.0f} ({row['total_roi']:>+.0f}%)  |  "
-              f"META alone ${row['META_pnl']:>+6,.0f} ({row['META_roi']:>+.0f}%)")
     print()
 
 
