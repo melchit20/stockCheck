@@ -1,5 +1,5 @@
 scan:
-  num_stocks: 100
+  num_stocks: 500
   lookback_days: 30
   morning_minutes: 20
 

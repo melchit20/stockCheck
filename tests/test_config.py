@@ -18,7 +18,7 @@ class TestAppConfig:
 
     def test_from_yaml(self):
         config = AppConfig.from_yaml("config/default.yaml")
-        assert config.scan.num_stocks == 100
+        assert config.scan.num_stocks == 500
         assert config.signals.stock_jump_min == 0.25
 
     def test_custom_yaml(self, tmp_path):
