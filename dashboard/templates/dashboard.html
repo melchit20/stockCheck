@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Paper Trading{% endblock %}
+{% block body %}
+<div class="min-h-full">
+  <!-- NAV -->
+  <nav class="bg-gray-800 border-b border-gray-700">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-14">
+      <div class="flex items-center gap-3">
+        <span class="text-lg font-bold tracking-tight">📈 Paper Trading</span>
+        <button id="sched-toggle" onclick="toggleScheduler()" class="flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-gray-700 text-gray-400 hover:bg-gray-600 transition cursor-pointer">
+          <span id="sched-dot" class="w-2 h-2 rounded-full bg-gray-500"></span>
+          <span id="sched-label">scheduler: —</span>
+        </button>
+      </div>
+      <div class="flex items-center gap-4 text-sm">
+        <span class="text-gray-400">{{ user.name }}</span>
+        {% if auth_enabled %}
+        <a href="{{ url_for('logout') }}" class="text-gray-500 hover:text-gray-300">Sign out</a>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+
+    <!-- 1. BOT STATUS -->
+    <section>
+      <h2 class="text-lg font-semibold mb-3">Bot Status</h2>
+      <div id="bots-grid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-gray-800 rounded-xl p-5 animate-pulse h-40"></div>
+        <div class="bg-gray-800 rounded-xl p-5 animate-pulse h-40"></div>
+        <div class="bg-gray-800 rounded-xl p-5 animate-pulse h-40"></div>
+      </div>
+    </section>
+
+    <!-- 2. TODAY'S SUMMARY -->
+    <section>
+      <h2 class="text-lg font-semibold mb-3">Today's Summary</h2>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="summary-cards">
+        <div class="bg-gray-800 rounded-xl p-4 animate-pulse h-24"></div>
+        <div class="bg-gray-800 rounded-xl p-4 animate-pulse h-24"></div>
+        <div class="bg-gray-800 rounded-xl p-4 animate-pulse h-24"></div>
+        <div class="bg-gray-800 rounded-xl p-4 animate-pulse h-24"></div>
+        <div class="bg-gray-800 rounded-xl p-4 animate-pulse h-24"></div>
+      </div>
+    </section>
+
+    <!-- 3. HISTORICAL P&L CHART -->
+    <section>
+      <h2 class="text-lg font-semibold mb-3">Historical P&amp;L</h2>
+      <div class="bg-gray-800 rounded-xl p-5">
+        <canvas id="pnl-chart" height="100"></canvas>
+        <p id="pnl-empty" class="text-gray-500 text-sm text-center py-8 hidden">No closed trades yet. Chart will appear after the first trading day.</p>
+      </div>
+    </section>
+
+    <!-- 4. TRADE HISTORY TABLE -->
+    <section>
+      <h2 class="text-lg font-semibold mb-3">Trade History</h2>
+      <div class="bg-gray-800 rounded-xl overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-700/50 text-gray-400 text-xs uppercase tracking-wider">
+              <tr>
+                <th class="px-4 py-3 text-left">Date</th>
+                <th class="px-4 py-3 text-left">Symbol</th>
+                <th class="px-4 py-3 text-right">Entry</th>
+                <th class="px-4 py-3 text-right">Exit</th>
+                <th class="px-4 py-3 text-right">P&amp;L</th>
+                <th class="px-4 py-3 text-right">P&amp;L %</th>
+                <th class="px-4 py-3 text-left">Exit Reason</th>
+                <th class="px-4 py-3 text-left">Status</th>
+              </tr>
+            </thead>
+            <tbody id="trades-body" class="divide-y divide-gray-700/50">
+              <tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- OVERALL TOTALS -->
+    <section>
+      <h2 class="text-lg font-semibold mb-3">Overall Performance</h2>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="overall-cards">
+        <div class="bg-gray-800 rounded-xl p-4 animate-pulse h-24"></div>
+        <div class="bg-gray-800 rounded-xl p-4 animate-pulse h-24"></div>
+        <div class="bg-gray-800 rounded-xl p-4 animate-pulse h-24"></div>
+        <div class="bg-gray-800 rounded-xl p-4 animate-pulse h-24"></div>
+        <div class="bg-gray-800 rounded-xl p-4 animate-pulse h-24"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const TICKER_COLORS = {TSLA:'#3B82F6', APP:'#10B981', AMD:'#F59E0B'};
+let pnlChart = null;
+
+// ── helpers ──────────────────────────────────────────────────────────
+function $(sel){ return document.querySelector(sel); }
+function $$(sel){ return document.querySelectorAll(sel); }
+function money(v){ return v==null?'—':'$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function pct(v){ return v==null?'—':Number(v).toFixed(1)+'%'; }
+function pnlClass(v){ return v>0?'text-emerald-400':v<0?'text-red-400':'text-gray-400'; }
+
+function stageBadge(status, stage){
+  const map = {
+    initialized:    ['Initialized','bg-gray-600'],
+    watching:       ['Watching','bg-blue-600'],
+    position_open:  ['Position Open','bg-amber-600'],
+    completed:      ['Done','bg-emerald-700'],
+    no_signal:      ['No Signal','bg-gray-600'],
+    cancelled:      ['Cancelled','bg-red-700'],
+  };
+  const [label, cls] = map[status] || [status,'bg-gray-600'];
+  const pulse = (status==='watching'||status==='position_open') ? ' pulse' : '';
+  return `<span class="text-xs px-2 py-0.5 rounded-full ${cls}${pulse}">${label}</span>`;
+}
+
+function reasonBadge(r){
+  if(!r) return '—';
+  const m = {profit_target:'bg-emerald-700',stop_loss:'bg-red-700',window_expired:'bg-amber-700',cancelled:'bg-red-700'};
+  return `<span class="text-xs px-2 py-0.5 rounded-full ${m[r]||'bg-gray-600'}">${r.replace('_',' ')}</span>`;
+}
+
+// ── fetch wrappers ───────────────────────────────────────────────────
+async function api(path){
+  const r = await fetch(path);
+  if(r.status===401||r.status===403) { window.location='/login'; return null; }
+  return r.json();
+}
+
+// ── render bots ──────────────────────────────────────────────────────
+async function loadBots(){
+  const bots = await api('/api/bots');
+  if(!bots) return;
+  const grid = $('#bots-grid');
+  if(!bots.length){
+    grid.innerHTML = '<div class="col-span-3 bg-gray-800 rounded-xl p-8 text-center text-gray-500">No bots active today. Bots initialize automatically at 9:00 AM ET on trading days.</div>';
+    return;
+  }
+  grid.innerHTML = bots.map(b => {
+    const t = b.trade;
+    const isActive = ['watching','position_open','initialized'].includes(b.status);
+    let positionHtml = '';
+    if(t && t.status==='open'){
+      positionHtml = `
+        <div class="mt-3 pt-3 border-t border-gray-700 text-xs space-y-1">
+          <div class="flex justify-between"><span class="text-gray-400">Spot entry</span><span>${money(t.spot_entry)}</span></div>
+          <div class="flex justify-between"><span class="text-gray-400">Strike</span><span>${money(t.strike)}</span></div>
+          <div class="flex justify-between"><span class="text-gray-400">Premium</span><span>${money(t.entry_premium)}</span></div>
+          <div class="flex justify-between"><span class="text-gray-400">Cost</span><span>${money(t.entry_cost)}</span></div>
+        </div>`;
+    } else if(t && t.status==='closed'){
+      positionHtml = `
+        <div class="mt-3 pt-3 border-t border-gray-700 text-xs space-y-1">
+          <div class="flex justify-between"><span class="text-gray-400">P&L</span><span class="${pnlClass(t.pnl)}">${money(t.pnl)} (${pct(t.pnl_pct)})</span></div>
+          <div class="flex justify-between"><span class="text-gray-400">Exit</span><span>${reasonBadge(t.exit_reason)}</span></div>
+        </div>`;
+    }
+    const cancelBtn = isActive
+      ? `<button onclick="cancelBot(${b.id})" class="mt-3 w-full text-xs bg-red-700 hover:bg-red-600 rounded-lg px-3 py-1.5 transition">Cancel${t&&t.status==='open'?' &amp; Force Sell':''}</button>`
+      : '';
+    const color = TICKER_COLORS[b.symbol] || '#6B7280';
+    return `
+      <div class="bg-gray-800 rounded-xl p-5 border-l-4" style="border-color:${color}">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xl font-bold">${b.symbol}</span>
+          ${stageBadge(b.status, b.stage)}
+        </div>
+        <div class="text-xs text-gray-400 mb-1">${b.date}</div>
+        <div class="text-xs space-y-0.5 text-gray-300">
+          ${b.signal_detected ? '<span class="text-emerald-400 font-medium">Signal detected ✓</span>' : b.status==='no_signal' ? '<span class="text-gray-500">No signal</span>' : '<span class="text-gray-500">Scanning…</span>'}
+          ${b.stock_jump!=null ? `<div>Jump: ${Number(b.stock_jump).toFixed(2)} · DJI: ${Number(b.dji_bps).toFixed(1)} bps</div>` : ''}
+        </div>
+        ${positionHtml}
+        ${cancelBtn}
+      </div>`;
+  }).join('');
+}
+
+async function cancelBot(id){
+  if(!confirm('Cancel this bot? If a position is open it will be force-sold at market.')) return;
+  await fetch(`/api/bots/${id}/cancel`,{method:'POST'});
+  loadBots();
+  loadSummary();
+}
+
+// ── render summary ───────────────────────────────────────────────────
+async function loadSummary(){
+  const d = await api('/api/summary');
+  if(!d) return;
+  const t = d.today, o = d.overall;
+
+  function card(label,val,cls=''){
+    return `<div class="bg-gray-800 rounded-xl p-4"><div class="text-xs text-gray-400 mb-1">${label}</div><div class="text-xl font-bold ${cls}">${val}</div></div>`;
+  }
+
+  $('#summary-cards').innerHTML = [
+    card('Trades Today', t.trades),
+    card('Today P&L', money(t.total_pnl), pnlClass(t.total_pnl)),
+    card('Win Rate', pct(t.win_rate)),
+    card('Open Positions', d.open_positions.length),
+    card('Today ROI', pct(t.roi), pnlClass(t.roi)),
+  ].join('');
+
+  $('#overall-cards').innerHTML = [
+    card('Total Trades', o.trades),
+    card('Total P&L', money(o.total_pnl), pnlClass(o.total_pnl)),
+    card('Overall Win Rate', pct(o.win_rate)),
+    card('Total Invested', money(o.total_invested)),
+    card('Overall ROI', pct(o.roi), pnlClass(o.roi)),
+  ].join('');
+}
+
+// ── render chart ─────────────────────────────────────────────────────
+async function loadChart(){
+  const d = await api('/api/daily-pnl');
+  if(!d) return;
+  const totals = d.totals;
+  const bySymbol = d.by_symbol;
+
+  if(!totals.length){
+    $('#pnl-chart').classList.add('hidden');
+    $('#pnl-empty').classList.remove('hidden');
+    return;
+  }
+  $('#pnl-chart').classList.remove('hidden');
+  $('#pnl-empty').classList.add('hidden');
+
+  const dates = totals.map(r=>r.date);
+  let cumTotal = 0;
+  const cumTotals = totals.map(r => { cumTotal+=r.total_pnl; return cumTotal; });
+
+  const symbols = [...new Set(bySymbol.map(r=>r.symbol))];
+  const symSeries = {};
+  symbols.forEach(s=>{ symSeries[s] = {cum:0, data:{}}; });
+  bySymbol.forEach(r=>{
+    symSeries[r.symbol].cum += r.total_pnl;
+    symSeries[r.symbol].data[r.date] = symSeries[r.symbol].cum;
+  });
+
+  const datasets = [{
+    label: 'Total',
+    data: cumTotals,
+    borderColor: '#F3F4F6',
+    backgroundColor: 'rgba(243,244,246,0.1)',
+    borderWidth: 2.5,
+    fill: true,
+    tension: 0.3,
+  }];
+
+  symbols.forEach(s=>{
+    const color = TICKER_COLORS[s]||'#6B7280';
+    datasets.push({
+      label: s,
+      data: dates.map(d => symSeries[s].data[d]||null),
+      borderColor: color,
+      borderWidth: 1.5,
+      borderDash: [4,2],
+      tension: 0.3,
+      pointRadius: 2,
+    });
+  });
+
+  if(pnlChart) pnlChart.destroy();
+  pnlChart = new Chart($('#pnl-chart'), {
+    type: 'line',
+    data: {labels: dates, datasets},
+    options: {
+      responsive: true,
+      interaction: {mode:'index', intersect:false},
+      plugins: {
+        legend: {labels:{color:'#9CA3AF'}},
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: $${ctx.parsed.y.toFixed(2)}`
+          }
+        }
+      },
+      scales: {
+        x: {ticks:{color:'#6B7280'}, grid:{color:'#374151'}},
+        y: {
+          ticks:{color:'#6B7280', callback:v=>'$'+v},
+          grid:{color:'#374151'},
+        },
+      },
+    },
+  });
+}
+
+// ── render trades table ──────────────────────────────────────────────
+async function loadTrades(){
+  const trades = await api('/api/trades');
+  if(!trades) return;
+  const body = $('#trades-body');
+  if(!trades.length){
+    body.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">No trades recorded yet.</td></tr>';
+    return;
+  }
+  body.innerHTML = trades.map(t => `
+    <tr class="hover:bg-gray-700/30">
+      <td class="px-4 py-2.5 text-gray-300">${t.date}</td>
+      <td class="px-4 py-2.5 font-medium" style="color:${TICKER_COLORS[t.symbol]||'#F3F4F6'}">${t.symbol}</td>
+      <td class="px-4 py-2.5 text-right">${money(t.entry_premium)}</td>
+      <td class="px-4 py-2.5 text-right">${t.exit_premium!=null?money(t.exit_premium):'—'}</td>
+      <td class="px-4 py-2.5 text-right ${pnlClass(t.pnl)}">${t.pnl!=null?money(t.pnl):'—'}</td>
+      <td class="px-4 py-2.5 text-right ${pnlClass(t.pnl_pct)}">${t.pnl_pct!=null?pct(t.pnl_pct):'—'}</td>
+      <td class="px-4 py-2.5">${reasonBadge(t.exit_reason)}</td>
+      <td class="px-4 py-2.5"><span class="text-xs px-2 py-0.5 rounded-full ${t.status==='open'?'bg-amber-700':'bg-gray-600'}">${t.status}</span></td>
+    </tr>
+  `).join('');
+}
+
+// ── scheduler toggle ─────────────────────────────────────────────────
+let _schedState = {running:false, ready:false};
+
+async function loadSchedulerStatus(){
+  const d = await api('/api/scheduler/status');
+  if(!d) return;
+  _schedState = d;
+  const btn = $('#sched-toggle');
+  const dot = $('#sched-dot');
+  const label = $('#sched-label');
+
+  if(!d.ready){
+    dot.className = 'w-2 h-2 rounded-full bg-gray-500';
+    label.textContent = 'bot: not configured';
+    btn.className = 'flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-gray-700 text-gray-500 cursor-not-allowed';
+  } else if(d.running){
+    dot.className = 'w-2 h-2 rounded-full bg-emerald-400 pulse';
+    label.textContent = 'bot: running — click to stop';
+    btn.className = 'flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-emerald-900/60 text-emerald-300 hover:bg-emerald-800/60 transition cursor-pointer';
+  } else {
+    dot.className = 'w-2 h-2 rounded-full bg-red-400';
+    label.textContent = 'bot: stopped — click to start';
+    btn.className = 'flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-red-900/60 text-red-300 hover:bg-red-800/60 transition cursor-pointer';
+  }
+}
+
+async function toggleScheduler(){
+  if(!_schedState.ready){
+    alert('Bot scheduler is not configured.\n\nSet POLYGON_API_KEY and restart the application.');
+    return;
+  }
+  const action = _schedState.running ? 'stop' : 'start';
+  const msg = _schedState.running
+    ? 'Stop the trading bot? It will not trade until you start it again.'
+    : 'Start the trading bot? It will begin scanning for signals on the next trading day.';
+  if(!confirm(msg)) return;
+  await fetch(`/api/scheduler/${action}`, {method:'POST'});
+  await loadSchedulerStatus();
+}
+
+// ── init & polling ───────────────────────────────────────────────────
+async function refresh(){
+  await Promise.all([loadBots(), loadSummary(), loadSchedulerStatus()]);
+}
+
+(async function init(){
+  await refresh();
+  await loadChart();
+  await loadTrades();
+  setInterval(refresh, 15000);
+  setInterval(loadTrades, 30000);
+  setInterval(loadChart, 60000);
+})();
+</script>
+{% endblock %}

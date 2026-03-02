@@ -1,0 +1,36 @@
+trading:
+  symbols: ["TSLA", "APP", "AMD"]
+  dji_proxy: "DIA"
+  contracts: 1
+
+  # Options params (tuned via MC sweep)
+  strike_otm_pct: 5.0
+  days_to_expiry: 3
+  profit_target_pct: 20.0
+  stop_loss_pct: 50.0
+  trading_window_minutes: 20
+
+  # Signal params
+  stock_jump_min: 0.75
+  dji_jump_min_bps: 0.0
+  premarket_minutes: 20
+
+  # Black-Scholes
+  risk_free_rate: 0.05
+  iv_lookback_days: 30
+
+dashboard:
+  host: "0.0.0.0"
+  port: 5000
+  secret_key: "change-this-to-a-random-secret"
+
+auth:
+  # Google OAuth — create credentials at https://console.cloud.google.com/apis/credentials
+  google_client_id: ""
+  google_client_secret: ""
+  # Only these Google accounts may log in
+  allowed_emails:
+    - "your-email@gmail.com"
+
+database:
+  path: "data/paper_trading.db"
